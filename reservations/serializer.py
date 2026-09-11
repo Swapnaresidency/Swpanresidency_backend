@@ -10,6 +10,7 @@ class CheckInSerializer(serializers.ModelSerializer):
         source="customer.mobile_no", 
         read_only=True
     )
+    customer_gst = serializers.ReadOnlyField(source="customer.gst")
     room_no = serializers.CharField(
         source="room.room_no", 
         read_only=True
@@ -40,6 +41,7 @@ class CheckInSerializer(serializers.ModelSerializer):
 class CheckOutSerializer(serializers.ModelSerializer):
     # Traverses the relationships: CheckOut -> CheckIn -> Customer/Room
     customer_name = serializers.ReadOnlyField(source='checkin.customer.customer_name')
+    customer_gst = serializers.ReadOnlyField(source='checkin.customer.gst')
     room_no = serializers.ReadOnlyField(source='checkin.room.room_no')
     total_amount = serializers.ReadOnlyField(source='checkin.total_amount')
 

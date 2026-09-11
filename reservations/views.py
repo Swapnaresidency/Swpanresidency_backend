@@ -18,6 +18,7 @@ from datetime import datetime
 
 from .models import CheckIn, CheckOut
 from .serializer import CheckInSerializer, CheckOutSerializer
+from .reports import build_checkout_report_excel, build_checkout_report_pdf
 from master.models import Room
 from account.models import Institution
 class CheckInViewSet(viewsets.ModelViewSet):
@@ -133,6 +134,7 @@ class CheckInViewSet(viewsets.ModelViewSet):
         info_data = [
             [Paragraph("<b>Guest Name:</b>", normal_style), Paragraph(str(customer.customer_name), normal_style)],
             [Paragraph("<b>Mobile No:</b>", normal_style), Paragraph(str(getattr(customer, 'mobile_no', 'N/A')), normal_style)],
+            [Paragraph("<b>GST:</b>", normal_style), Paragraph(str(getattr(customer, "gst", None) or "-"), normal_style)],
             [Paragraph("<b>Assigned Unit:</b>", normal_style), Paragraph(f"Room {room.room_no} ({room.room_type.category})", normal_style)],
         ]
         info_table = Table(info_data, colWidths=[120, 400])
@@ -320,6 +322,8 @@ class CheckOutViewSet(viewsets.ModelViewSet):
             "generated_at": checkout.created_at,
             "customer": {
                 "name": customer.customer_name,
+                "gst": getattr(customer, "gst", None) or "",
+                "address": customer.address or "",
             },
             "stay_details": {
                 "room_no": room.room_no,
@@ -472,9 +476,10 @@ class CheckOutViewSet(viewsets.ModelViewSet):
         # Customer & Stay Details Table
         story.append(Paragraph("Billing to", section_style))
         Billing_details_data = [
-         [Paragraph("<b>Customer Name:</b>", normal_style), Paragraph(customer.customer_name, normal_style)],
-        [Paragraph("<b> GISTIN & Address :</b>", normal_style), Paragraph(customer.address, normal_style)],
-]
+            [Paragraph("<b>Customer Name:</b>", normal_style), Paragraph(customer.customer_name, normal_style)],
+            [Paragraph("<b>GST:</b>", normal_style), Paragraph(getattr(customer, "gst", None) or "-", normal_style)],
+            [Paragraph("<b>Address:</b>", normal_style), Paragraph(customer.address or "-", normal_style)],
+        ]
         Billing_details_data = Table(Billing_details_data, colWidths=[120, 400])
         Billing_details_data.setStyle(TableStyle([
                     ('VALIGN', (0,0), (-1,-1), 'TOP'),
@@ -565,3 +570,70 @@ class CheckOutViewSet(viewsets.ModelViewSet):
         # Generate Document
         doc.build(story)
         return response
+
+    def _filtered_checkouts(self, from_date=None, to_date=None):
+        qs = self.get_queryset().select_related(
+            "checkin__customer",
+            "checkin__room",
+        )
+        if from_date:
+            qs = qs.filter(checkout_date__gte=from_date)
+        if to_date:
+            qs = qs.filter(checkout_date__lte=to_date)
+        return qs.order_by("checkout_date", "checkout_time", "id")
+
+    @action(detail=False, methods=["get"], url_path="daily-report")
+    def daily_report(self, request):
+        report_date = request.query_params.get("date")
+        if not report_date:
+            return Response(
+                {"error": "Query parameter 'date' is required (YYYY-MM-DD)."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            parsed = datetime.strptime(report_date, "%Y-%m-%d").date()
+        except ValueError:
+            return Response(
+                {"error": "Invalid date. Use YYYY-MM-DD."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        checkouts = self._filtered_checkouts(from_date=parsed, to_date=parsed)
+        title = f"Daily Sales as on : {parsed.strftime('%d-%m-%Y')}"
+        return build_checkout_report_pdf(checkouts, title, "", request.user)
+
+    @action(detail=False, methods=["get"], url_path="monthly-report")
+    def monthly_report(self, request):
+        from_date = request.query_params.get("from_date")
+        to_date = request.query_params.get("to_date")
+        export_format = (request.query_params.get("export") or "pdf").lower()
+
+        if not from_date or not to_date:
+            return Response(
+                {"error": "Query parameters 'from_date' and 'to_date' are required (YYYY-MM-DD)."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            start = datetime.strptime(from_date, "%Y-%m-%d").date()
+            end = datetime.strptime(to_date, "%Y-%m-%d").date()
+        except ValueError:
+            return Response(
+                {"error": "Invalid date range. Use YYYY-MM-DD."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if start > end:
+            return Response(
+                {"error": "from_date cannot be after to_date."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        checkouts = self._filtered_checkouts(from_date=start, to_date=end)
+        if start.year == end.year and start.month == end.month:
+            month_label = start.strftime("%B %Y")
+        else:
+            month_label = f"{start.strftime('%B %Y')} to {end.strftime('%B %Y')}"
+        title = f"Monthly Sales for the month of : {month_label}"
+
+        if export_format == "excel":
+            return build_checkout_report_excel(checkouts, title, "", request.user)
+        return build_checkout_report_pdf(checkouts, title, "", request.user)

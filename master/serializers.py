@@ -23,3 +23,25 @@ class CustomerSerializer(serializers.ModelSerializer):
     class Meta:
         model = Customer
         fields = "__all__"
+        extra_kwargs = {
+            "email": {
+                "required": False,
+                "allow_blank": True,
+                "allow_null": True,
+            },
+            "gst": {
+                "required": False,
+                "allow_blank": True,
+                "allow_null": True,
+            },
+        }
+
+    def validate_email(self, value):
+        if value in ("", None):
+            return None
+        return value
+
+    def validate_gst(self, value):
+        if value in ("", None):
+            return None
+        return value.strip()

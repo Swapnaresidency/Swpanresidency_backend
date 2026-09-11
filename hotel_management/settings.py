@@ -90,7 +90,7 @@ WSGI_APPLICATION = 'hotel_management.wsgi.application'
 # DATABASES = {
 #     'default': {
 #         'ENGINE': 'django.db.backends.postgresql',
-#         'NAME': 'hotelsdb',
+#         'NAME': 'swapnaresidentlocal',
 #         'USER': 'postgres',
 #         'PASSWORD': 'admin123',
 #         'HOST': 'localhost',      # Use 'localhost' or your database IP address

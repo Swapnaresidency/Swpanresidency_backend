@@ -84,6 +84,12 @@ class Customer(models.Model):
         unique=True
     )
 
+    gst = models.CharField(
+        max_length=15,
+        blank=True,
+        null=True
+    )
+
     address = models.TextField()
 
     id_type = models.CharField(
